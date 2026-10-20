@@ -1,0 +1,6 @@
+{
+  "name": "Motiveate AI - Mobile Architect Studio",
+  "description": "Cross-platform React Native (Expo Router) architecture and interactive mobile simulator for Motiveate AI with daily soothing pastel themes, Google Cloud Run integration, strict 3-card quota, and complete source code.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

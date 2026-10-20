@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Motiveate AI",
+    "slug": "motiveate-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "motiveateai",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#eef5f0"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.motiveate.ai.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Motiveate AI does not require camera access.",
+        "NSPhotoLibraryAddUsageDescription": "Allow Motiveate AI to save vertical 9:16 quote stories to your camera roll.",
+        "SKAdNetworkItems": [
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#eef5f0"
+      },
+      "package": "com.motiveate.ai.app",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-av",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "delayAppMeasurementInit": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
