@@ -1,15 +1,18 @@
 /**
  * Shared TypeScript types for Motiveate AI Mobile App & Backend API.
+ * Aligned with https://github.com/sheiknawaz49-cloud/gcp_motivation_app
  */
 
 export type LanguageCode = 'en' | 'te';
 export type VoiceGender = 'female' | 'male';
+export type ThemeMode = 'auto' | 'light' | 'dark';
 
 export interface UserPreferences {
   mood: string;
   goal: string;
   voice: VoiceGender;
   language: LanguageCode;
+  themeMode?: ThemeMode;
 }
 
 export interface UserProfile {
@@ -24,6 +27,7 @@ export interface UserProfile {
   aiPersona?: string;
   preferences: UserPreferences;
   streakCount: number;
+  maxStreak?: number;
   lastActiveDate: string;
 }
 
@@ -45,6 +49,10 @@ export interface DailyBatchResponse {
   remaining: number; // number of unviewed fresh cards today (starts at 3, decrements to 0)
   totalDailyQuota: number; // 3
   streakCount: number;
+  maxStreak?: number;
+  limit_reached?: boolean;
+  daily_cards?: QuoteItem[];
+  isOfflineCache?: boolean;
 }
 
 export interface FeedbackRequest {

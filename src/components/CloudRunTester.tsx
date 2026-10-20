@@ -25,11 +25,52 @@ export const CloudRunTester: React.FC<CloudRunTesterProps> = ({
   );
 
   const endpoints = [
-    { method: 'GET', path: '/api/batch', desc: 'Fetch 3 daily quotes & remaining quota' },
-    { method: 'POST', path: '/auth/google', desc: 'Exchange Google idToken for session JWT', defaultBody: JSON.stringify({ idToken: 'test_demo_google_id_token' }, null, 2) },
-    { method: 'POST', path: '/onboarding', desc: 'Submit language & interest preferences', defaultBody: JSON.stringify({ language: 'en', interests: ['Fitness 💪', 'Coding & Tech 💻'] }, null, 2) },
-    { method: 'POST', path: '/api/feedback', desc: 'Submit like/dislike quote action', defaultBody: JSON.stringify({ action: 'like', quote: 'Peace comes from within.' }, null, 2) },
-    { method: 'POST', path: '/api/tts', desc: 'Generate audio synthesis for quote', defaultBody: JSON.stringify({ quote: 'The mind is everything.', voice: 'female', language: 'en' }, null, 2) },
+    {
+      method: 'GET',
+      path: '/api/batch',
+      desc: 'Fetch 3 daily quotes, streak, max streak & quota status (Asia/Kolkata)',
+      defaultBody: '',
+    },
+    {
+      method: 'POST',
+      path: '/api/tts',
+      desc: 'Generate on-demand audio speech (cached in profile & daily_cards)',
+      defaultBody: JSON.stringify({ quote: 'The mind is everything. What you think you become.', voice: 'female', language: 'en' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/preferences',
+      desc: 'Update preferences and appearance theme_mode (auto, light, dark)',
+      defaultBody: JSON.stringify({ mood: 'focused', goal: 'Daily growth', voice: 'female', language: 'en', theme_mode: 'auto' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/api/feedback',
+      desc: 'Submit like/dislike quote reaction',
+      defaultBody: JSON.stringify({ action: 'like', quote: 'Small disciplines repeated with consistency every day lead to great achievements.' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/api/context/mobile',
+      desc: 'Submit mobile screen-time or app usage context for AI personalization',
+      defaultBody: JSON.stringify({ app_usage_context: 'Screen time 3.5h today. Frequent coding on GitHub and reading books.' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/auth/delete-account',
+      desc: 'Permanently delete user account, Firestore profile, and GCS audio files',
+      defaultBody: JSON.stringify({}, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/onboarding',
+      desc: 'Submit calibrated language (en/te), 9 interests & AI persona summary',
+      defaultBody: JSON.stringify({
+        language: 'en',
+        interests: ['Coding & Tech 💻', 'Fitness 💪', 'Devotion 🙏', 'Movies 🎬'],
+        aiPersona: 'Ambitious developer striving to ship SaaS products, thrives on stoic discipline and direct, no-fluff motivation.'
+      }, null, 2),
+    },
   ];
 
   const handleSelectEndpoint = (ep: typeof endpoints[0]) => {

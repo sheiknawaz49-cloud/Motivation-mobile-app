@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ThemeColors } from '../constants/themes';
-import { UserPreferences, LanguageCode, VoiceGender } from '../types';
+import { UserPreferences, LanguageCode, VoiceGender, ThemeMode } from '../types';
 import api from '../api/client';
 
 interface PreferencesModalProps {
@@ -42,13 +42,14 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   const [goal, setGoal] = useState(currentPreferences.goal || 'Daily Habit 📅');
   const [voice, setVoice] = useState<VoiceGender>(currentPreferences.voice || 'female');
   const [language, setLanguage] = useState<LanguageCode>(currentPreferences.language || 'en');
+  const [themeMode, setThemeMode] = useState<ThemeMode>(currentPreferences.themeMode || 'auto');
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const updated: UserPreferences = { mood, goal, voice, language };
+      const updated: UserPreferences = { mood, goal, voice, language, themeMode };
       await api.updatePreferences(updated);
       onPreferencesUpdated(updated);
       onClose();
@@ -185,6 +186,36 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
                   👨 Resonant Male
                 </Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Theme / Appearance Mode */}
+            <Text style={[styles.sectionLabel, { color: theme.textPrimary, marginTop: 18 }]}>
+              Appearance / Theme
+            </Text>
+            <View style={styles.rowToggle}>
+              {(['auto', 'light', 'dark'] as const).map((mode) => {
+                const label = mode === 'auto' ? '🌓 Auto' : mode === 'light' ? '☀️ Light' : '🌙 Dark';
+                const isSelected = themeMode === mode;
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.optionButton,
+                      isSelected && { backgroundColor: theme.badgeBg, borderColor: theme.accent },
+                    ]}
+                    onPress={() => setThemeMode(mode)}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        isSelected ? { color: theme.badgeText, fontWeight: '700' } : { color: theme.textSecondary },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Current Mood */}

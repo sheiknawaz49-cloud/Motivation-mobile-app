@@ -5,42 +5,46 @@ import {
   getDailyTheme,
   getThemeByIndex,
   getCalendarDateKey,
+  getYesterdayDateKey,
   initializeDailyQuota,
   incrementDailyCardView,
   calculateStreak,
+  calculateStreakWithMax,
+  resolveThemeStyle,
   MAX_CARDS_PER_DAY,
 } from './quota.ts';
 
-test('Theme rotation contains exactly 6 soothing low-eye-strain pastel palettes', () => {
+test('Theme rotation contains exactly 6 soothing low-eye-strain pastel palettes matching repo', () => {
   assert.equal(PASTEL_THEMES.length, 6);
   const ids = PASTEL_THEMES.map(t => t.id);
   assert.deepEqual(ids, [
     'warm-sage',
-    'morning-oat',
-    'sky-breeze',
-    'lavender-mist',
-    'rose-alabaster',
-    'mint-cream',
+    'morning-sand',
+    'sky-mist',
+    'lavender-calm',
+    'peach-clay',
+    'mint-alabaster',
   ]);
   // Verify expected background hex codes from specification
-  assert.equal(PASTEL_THEMES[0].background, '#eef5f0'); // Warm Sage
-  assert.equal(PASTEL_THEMES[1].background, '#f9f5eb'); // Morning Oat
-  assert.equal(PASTEL_THEMES[2].background, '#edf5fc'); // Sky Breeze
-  assert.equal(PASTEL_THEMES[3].background, '#f4f1f8'); // Lavender Mist
-  assert.equal(PASTEL_THEMES[4].background, '#fdf2f0'); // Rose Alabaster
-  assert.equal(PASTEL_THEMES[5].background, '#effaf7'); // Mint Cream
+  assert.equal(PASTEL_THEMES[0].background, '#f1f7f4'); // Warm Sage
+  assert.equal(PASTEL_THEMES[1].background, '#faf6f0'); // Morning Sand
+  assert.equal(PASTEL_THEMES[2].background, '#f0f7ff'); // Sky Mist
+  assert.equal(PASTEL_THEMES[3].background, '#f6f4f9'); // Lavender Calm
+  assert.equal(PASTEL_THEMES[4].background, '#fff5f2'); // Peach Clay
+  assert.equal(PASTEL_THEMES[5].background, '#f2fbf9'); // Mint Alabaster
 });
 
 test('getThemeByIndex handles negative, exact, and overflow indices cleanly', () => {
   assert.equal(getThemeByIndex(0).id, 'warm-sage');
-  assert.equal(getThemeByIndex(5).id, 'mint-cream');
+  assert.equal(getThemeByIndex(5).id, 'mint-alabaster');
   assert.equal(getThemeByIndex(6).id, 'warm-sage');
-  assert.equal(getThemeByIndex(-1).id, 'mint-cream');
+  assert.equal(getThemeByIndex(-1).id, 'mint-alabaster');
 });
 
-test('Calendar date formatting produces standard YYYY-MM-DD', () => {
+test('Calendar date formatting produces standard YYYY-MM-DD and yesterday calculation', () => {
   const d = new Date(2026, 9, 20); // October 20, 2026
   assert.equal(getCalendarDateKey(d), '2026-10-20');
+  assert.equal(getYesterdayDateKey(d), '2026-10-19');
 });
 
 test('Quota initialization resets properly on a new day or preserves current day', () => {
@@ -92,16 +96,38 @@ test('Strict 3 cards per day increment caps at 3 and marks isCompleted', () => {
   assert.equal(quota.isCompleted, true);
 });
 
-test('Streak calculation preserves, advances or resets appropriately', () => {
-  // Brand new user
-  assert.equal(calculateStreak(null, 0, '2026-10-20'), 1);
+test('calculateStreakWithMax matches UserService in Cloud Run', () => {
+  // New user
+  const r1 = calculateStreakWithMax(null, 1, 1, '2026-10-20', '2026-10-19');
+  assert.equal(r1.streak, 1);
+  assert.equal(r1.maxStreak, 1);
 
-  // Same day multiple visits
-  assert.equal(calculateStreak('2026-10-20', 5, '2026-10-20'), 5);
+  // Active again today (same day visit keeps streak unchanged)
+  const r2 = calculateStreakWithMax('2026-10-20', 5, 5, '2026-10-20', '2026-10-19');
+  assert.equal(r2.streak, 5);
+  assert.equal(r2.maxStreak, 5);
 
-  // Consecutive day (yesterday was 2026-10-19)
-  assert.equal(calculateStreak('2026-10-19', 5, '2026-10-20'), 6);
+  // Active next day (consecutive visit increments)
+  const r3 = calculateStreakWithMax('2026-10-19', 5, 5, '2026-10-20', '2026-10-19');
+  assert.equal(r3.streak, 6);
+  assert.equal(r3.maxStreak, 6);
 
-  // Broken streak (2 days ago)
-  assert.equal(calculateStreak('2026-10-17', 10, '2026-10-20'), 1);
+  // Missed a day (last active was 3 days ago -> resets to 1, but keeps maxStreak)
+  const r4 = calculateStreakWithMax('2026-10-17', 5, 10, '2026-10-20', '2026-10-19');
+  assert.equal(r4.streak, 1);
+  assert.equal(r4.maxStreak, 10);
+});
+
+test('resolveThemeStyle properly toggles light and dark modes with theme accents', () => {
+  const theme = PASTEL_THEMES[0]; // warm-sage
+  const light = resolveThemeStyle(theme, 'light');
+  assert.equal(light.isDark, false);
+  assert.equal(light.background, '#f1f7f4');
+  assert.equal(light.accent, '#3b7a57');
+
+  const dark = resolveThemeStyle(theme, 'dark');
+  assert.equal(dark.isDark, true);
+  assert.equal(dark.background, '#090d16');
+  assert.equal(dark.cardBackground, '#111827');
+  assert.equal(dark.accent, '#34d399');
 });

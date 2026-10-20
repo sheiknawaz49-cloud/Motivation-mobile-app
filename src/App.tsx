@@ -35,11 +35,13 @@ import confetti from 'canvas-confetti';
 import {
   PASTEL_THEMES,
   DailyTheme,
+  ThemeMode,
   getDailyTheme,
   getCalendarDateKey,
   initializeDailyQuota,
   incrementDailyCardView,
-  calculateStreak,
+  calculateStreakWithMax,
+  resolveThemeStyle,
 } from './logic/quota';
 import { StoryShareModal } from './components/StoryShareModal';
 import { CloudRunTester } from './components/CloudRunTester';
@@ -73,18 +75,19 @@ const SAMPLE_QUOTES = [
   },
 ];
 
+// All 9 curated interest tags matching onboarding.html in gcp_motivation_app
 const CORE_INTERESTS = [
-  'Fitness 💪',
-  'Coding & Tech 💻',
+  'Sports 🏏',
   'Movies 🎬',
+  'Book Reading 📚',
+  'Swimming 🏊',
   'Devotion 🙏',
-  'Business 🚀',
 ];
 
 const EXTENDED_INTERESTS = [
-  'Sports 🏏',
-  'Book Reading 📚',
-  'Swimming 🏊',
+  'Fitness 💪',
+  'Coding & Tech 💻',
+  'Business 🚀',
   'Music 🎵',
 ];
 
@@ -96,7 +99,10 @@ const LOADING_MESSAGES = [
 ];
 
 const AI_PERSONA_PROMPT =
-  'Analyze my personality and provide a 4-sentence summary of my daily mindset, core values, ambitions, and what truly inspires me. Keep it punchy, reflective, and empowering for a daily motivation generator.';
+  'Based on our past conversations, write a 4-sentence summary of my core interests, biggest goals, personality traits, and what kind of coaching/motivation style resonates best with me.';
+
+const COMPLETION_MESSAGE =
+  "🌿 You've completed your 3 mindful quotes for today. Come back tomorrow to grow your streak!";
 
 export default function App() {
   // Navigation / View State
@@ -118,6 +124,7 @@ export default function App() {
   // Backend connection state
   const [cloudRunUrl, setCloudRunUrl] = useState(DEFAULT_CLOUD_RUN_URL);
   const [isLiveMode, setIsLiveMode] = useState(false);
+  const [isOfflineSimulated, setIsOfflineSimulated] = useState(false);
 
   // User State
   const [isUserOnboarded, setIsUserOnboarded] = useState(true);
@@ -142,6 +149,10 @@ export default function App() {
   const [cardIndex, setCardIndex] = useState(0);
   const [cardsViewedToday, setCardsViewedToday] = useState(1); // 1, 2, or 3
   const [streakCount, setStreakCount] = useState(5);
+  const [maxStreak, setMaxStreak] = useState(7);
+  const [themeMode, setThemeMode] = useState<ThemeMode>('auto');
+  const [isShowingCompletionMessage, setIsShowingCompletionMessage] = useState(false);
+  const [cycleCardIndex, setCycleCardIndex] = useState(0);
   const [reactions, setReactions] = useState<Record<string, 'like' | 'dislike'>>({});
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
 
@@ -157,9 +168,19 @@ export default function App() {
     goal: 'Daily Habit 📅',
     voice: 'female' as 'female' | 'male',
     language: 'en' as 'en' | 'te',
+    themeMode: 'auto' as ThemeMode,
   });
 
-  const currentQuote = deck[cardIndex] || deck[0];
+  const effectiveTheme = resolveThemeStyle(currentTheme, themeMode);
+  const currentQuote = isShowingCompletionMessage
+    ? {
+        id: 'completion_card',
+        quote: COMPLETION_MESSAGE,
+        author: 'Motiveate AI Daily Coach',
+        category: 'Daily Quota Complete',
+        language: userPrefs.language,
+      }
+    : (deck[cardIndex] || deck[0]);
   const isDailyQuotaReached = cardsViewedToday >= 3;
 
   // Loading messages rotation during onboarding
@@ -228,15 +249,16 @@ export default function App() {
     } catch {}
   };
 
-  // Next card in deck ('✨ More' button with light haptics)
+  // Next card in deck ('✨ More' button with light haptics & daily quota cycling)
   const handleAdvanceCard = () => {
     triggerLightHaptic();
     setSlideDirection('next');
-    setCardIndex((prev) => (prev + 1) % deck.length);
 
     if (cardsViewedToday < 3) {
       const nextViewed = cardsViewedToday + 1;
       setCardsViewedToday(nextViewed);
+      setCardIndex((prev) => (prev + 1) % deck.length);
+      setIsShowingCompletionMessage(false);
       if (nextViewed === 3) {
         confetti({
           particleCount: 50,
@@ -244,12 +266,37 @@ export default function App() {
           origin: { y: 0.7 },
         });
       }
+    } else {
+      // 3 cards completed for today: alternate between friendly completion banner and saved daily cards
+      if (!isShowingCompletionMessage) {
+        setIsShowingCompletionMessage(true);
+        setCycleCardIndex(0);
+      } else {
+        if (cycleCardIndex < deck.length) {
+          setIsShowingCompletionMessage(false);
+          setCardIndex(cycleCardIndex);
+          setCycleCardIndex((prev) => prev + 1);
+        } else {
+          setIsShowingCompletionMessage(true);
+          setCycleCardIndex(0);
+        }
+      }
     }
 
     if (isPlayingAudio) {
       window.speechSynthesis?.cancel();
       setIsPlayingAudio(false);
     }
+  };
+
+  // Appearance / Theme mode cycling ('auto' -> 'light' -> 'dark' -> 'auto')
+  const cycleThemeMode = () => {
+    triggerLightHaptic();
+    setThemeMode((prev) => {
+      const next: ThemeMode = prev === 'auto' ? 'light' : prev === 'light' ? 'dark' : 'auto';
+      setUserPrefs((p) => ({ ...p, themeMode: next }));
+      return next;
+    });
   };
 
   // TTS audio playback ('🔊 Listen' button with light haptics)
@@ -391,12 +438,27 @@ export default function App() {
             </button>
           </div>
 
-          {/* Right Status Badge */}
+          {/* Right Status Badge & Offline Toggle */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsOfflineSimulated(!isOfflineSimulated)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border transition ${
+                isOfflineSimulated
+                  ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
+              title="Toggle offline SQLite simulation"
+            >
+              <span>{isOfflineSimulated ? '📶' : '🌐'}</span>
+              <span className="hidden sm:inline">
+                {isOfflineSimulated ? 'Offline (SQLite)' : 'Online Mode'}
+              </span>
+            </button>
+
             <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-mono text-[11px] text-slate-600 truncate max-w-[130px] sm:max-w-[170px]" title={cloudRunUrl}>
-                Cloud Run Live
+              <span className={`w-2 h-2 rounded-full ${isOfflineSimulated ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+              <span className="font-mono text-[11px] text-slate-600 truncate max-w-[120px] sm:max-w-[160px]" title={cloudRunUrl}>
+                {isOfflineSimulated ? 'SQLite Cache' : 'Cloud Run Live'}
               </span>
             </div>
           </div>
@@ -546,15 +608,18 @@ export default function App() {
                 {/* Inner Screen Display */}
                 <div
                   className="w-full h-full rounded-[38px] overflow-hidden flex flex-col justify-between relative transition-colors duration-500 select-none"
-                  style={{ backgroundColor: currentTheme.background }}
+                  style={{ backgroundColor: effectiveTheme.background }}
                 >
                   {/* Status Bar */}
-                  <div className="h-10 pt-2 px-6 flex items-center justify-between text-[11px] font-bold text-slate-700 z-20">
+                  <div
+                    className="h-10 pt-2 px-6 flex items-center justify-between text-[11px] font-bold z-20 transition-colors"
+                    style={{ color: effectiveTheme.textPrimary }}
+                  >
                     <span>9:41</span>
                     <div className="flex items-center gap-1.5">
                       <span>5G</span>
-                      <div className="w-4 h-2 border border-slate-700 rounded-sm p-0.5 flex items-center">
-                        <div className="w-full h-full bg-slate-700 rounded-xs" />
+                      <div className="w-4 h-2 border rounded-sm p-0.5 flex items-center" style={{ borderColor: effectiveTheme.textPrimary }}>
+                        <div className="w-full h-full rounded-xs" style={{ backgroundColor: effectiveTheme.textPrimary }} />
                       </div>
                     </div>
                   </div>
@@ -863,15 +928,29 @@ export default function App() {
                   {/* ----------------- SCREEN: MAIN DECK ----------------- */}
                   {mobileScreen === 'main' && (
                     <div className="flex-1 flex flex-col justify-between overflow-hidden relative">
-                      {/* 1. TOP AD BANNER CONTAINER */}
+                      {/* 1. TOP AD BANNER CONTAINER (Google AdSense / AdMob Ready) */}
                       <div className="w-full px-4 pt-1 pb-1">
-                        <div className="w-full h-11 rounded-lg border border-dashed border-slate-300 bg-white/60 flex items-center justify-between px-3 text-[10px] text-slate-500 font-semibold shadow-2xs">
-                          <span className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Google AdMob (Top Banner)
+                        <div
+                          className="w-full h-11 rounded-xl border border-dashed flex items-center justify-between px-3 text-[10px] shadow-2xs relative transition-colors"
+                          style={{
+                            backgroundColor: effectiveTheme.cardBackground,
+                            borderColor: effectiveTheme.cardBorder,
+                          }}
+                        >
+                          <span className="text-[9px] font-bold uppercase tracking-wider opacity-60" style={{ color: effectiveTheme.textSecondary }}>
+                            Sponsored
                           </span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">
-                            AD
+                          <span className="text-[10px] font-medium opacity-75" style={{ color: effectiveTheme.textSecondary }}>
+                            Ad space available
+                          </span>
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold"
+                            style={{
+                              backgroundColor: effectiveTheme.accentSoft,
+                              color: effectiveTheme.accent,
+                            }}
+                          >
+                            Top Slot
                           </span>
                         </div>
                       </div>
@@ -880,49 +959,93 @@ export default function App() {
                       <div className="px-5 py-1.5 flex items-center justify-between z-10">
                         {/* Streak Pill */}
                         <div
-                          className="px-2.5 py-1 rounded-full text-[11px] font-extrabold flex items-center gap-1 shadow-2xs"
+                          className="px-2.5 py-1 rounded-full text-[11px] font-extrabold flex items-center gap-1 shadow-2xs transition-colors"
                           style={{
-                            backgroundColor: currentTheme.badgeBg,
-                            color: currentTheme.badgeText,
+                            backgroundColor: effectiveTheme.badgeBg,
+                            color: effectiveTheme.badgeText,
                           }}
+                          title={`Day ${streakCount} Streak • All-time Best: ${maxStreak} Days`}
                         >
                           <span>🔥</span> Day {streakCount} Streak
                         </div>
 
                         {/* Daily Card Counter */}
                         <div
-                          className="px-2.5 py-1 rounded-full text-[11px] font-bold border shadow-2xs"
+                          className="px-2.5 py-1 rounded-full text-[11px] font-bold border shadow-2xs transition-colors"
                           style={{
-                            backgroundColor: currentTheme.cardBackground,
-                            borderColor: currentTheme.cardBorder,
-                            color: currentTheme.textPrimary,
+                            backgroundColor: effectiveTheme.cardBackground,
+                            borderColor: effectiveTheme.cardBorder,
+                            color: effectiveTheme.textPrimary,
                           }}
                         >
-                          Card {cardsViewedToday} of 3 today
+                          {cardsViewedToday < 3 ? `Card ${cardsViewedToday} of 3 today` : `🌿 3 of 3 complete`}
                         </div>
 
-                        {/* Settings Button */}
-                        <button
-                          onClick={() => setIsPrefsModalOpen(true)}
-                          className="w-8 h-8 rounded-full border flex items-center justify-center text-xs shadow-2xs hover:scale-105 active:scale-95 transition"
-                          style={{
-                            backgroundColor: currentTheme.cardBackground,
-                            borderColor: currentTheme.cardBorder,
-                          }}
-                          aria-label="Settings and Preferences"
-                        >
-                          ✏️
-                        </button>
+                        {/* Top Bar Right: Theme Cycle & Settings */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={cycleThemeMode}
+                            className="w-8 h-8 rounded-full border flex items-center justify-center text-xs shadow-2xs hover:scale-105 active:scale-95 transition"
+                            style={{
+                              backgroundColor: effectiveTheme.cardBackground,
+                              borderColor: effectiveTheme.cardBorder,
+                              color: effectiveTheme.textPrimary,
+                            }}
+                            title={`Appearance: ${themeMode.toUpperCase()} (Click to cycle Auto / Light / Dark)`}
+                            aria-label="Toggle Theme Appearance"
+                          >
+                            {themeMode === 'auto' ? '🌓' : themeMode === 'light' ? '☀️' : '🌙'}
+                          </button>
+
+                          <button
+                            onClick={() => setIsPrefsModalOpen(true)}
+                            className="w-8 h-8 rounded-full border flex items-center justify-center text-xs shadow-2xs hover:scale-105 active:scale-95 transition"
+                            style={{
+                              backgroundColor: effectiveTheme.cardBackground,
+                              borderColor: effectiveTheme.cardBorder,
+                              color: effectiveTheme.textPrimary,
+                            }}
+                            aria-label="Settings and Preferences"
+                          >
+                            ✏️
+                          </button>
+                        </div>
                       </div>
+
+                      {/* 2.5 OFFLINE SQLITE CACHE BADGE */}
+                      {isOfflineSimulated && (
+                        <div
+                          className="mx-5 my-1 px-3 py-1.5 rounded-xl border text-[10px] font-semibold flex items-center justify-between shadow-2xs animate-fadeIn"
+                          style={{
+                            backgroundColor: effectiveTheme.cardBackground,
+                            borderColor: effectiveTheme.cardBorder,
+                            color: effectiveTheme.textPrimary,
+                          }}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span>📶</span>
+                            <strong>Offline Mode</strong> • 3 quotes loaded from SQLite
+                          </span>
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold"
+                            style={{
+                              backgroundColor: effectiveTheme.accentSoft,
+                              color: effectiveTheme.accent,
+                            }}
+                          >
+                            SQLite Active
+                          </span>
+                        </div>
+                      )}
 
                       {/* 3. STRICT 3 CARDS COMPLETION BANNER */}
                       {isDailyQuotaReached && (
                         <div
                           className="mx-5 my-1 p-2 rounded-xl border text-[11px] leading-tight text-center font-medium animate-fadeIn shadow-2xs"
                           style={{
-                            backgroundColor: currentTheme.accentSoft,
-                            borderColor: currentTheme.accent,
-                            color: currentTheme.textPrimary,
+                            backgroundColor: effectiveTheme.accentSoft,
+                            borderColor: effectiveTheme.accent,
+                            color: effectiveTheme.textPrimary,
                           }}
                         >
                           🌿 <strong>You've completed your 3 mindful quotes today.</strong> Come back tomorrow to grow your streak!
@@ -940,8 +1063,8 @@ export default function App() {
                             transition={{ duration: 0.24, ease: 'easeOut' }}
                             className="w-full rounded-2xl p-5 border shadow-md flex flex-col justify-between max-h-[290px] h-full relative transition-colors duration-300"
                             style={{
-                              backgroundColor: currentTheme.cardBackground,
-                              borderColor: currentTheme.cardBorder,
+                              backgroundColor: effectiveTheme.cardBackground,
+                              borderColor: effectiveTheme.cardBorder,
                             }}
                           >
                             <div>
@@ -949,8 +1072,8 @@ export default function App() {
                               <span
                                 className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider mb-2 shadow-2xs"
                                 style={{
-                                  backgroundColor: currentTheme.accentSoft,
-                                  color: currentTheme.accent,
+                                  backgroundColor: effectiveTheme.accentSoft,
+                                  color: effectiveTheme.accent,
                                 }}
                               >
                                 {currentQuote.category}
@@ -959,7 +1082,7 @@ export default function App() {
                               {/* Decorative Quote Mark */}
                               <div
                                 className="text-3xl font-serif leading-none -mb-2 opacity-30"
-                                style={{ color: currentTheme.accent }}
+                                style={{ color: effectiveTheme.accent }}
                               >
                                 “
                               </div>
@@ -967,24 +1090,27 @@ export default function App() {
                               {/* Quote Text */}
                               <p
                                 className="text-base font-serif font-semibold leading-relaxed line-clamp-4"
-                                style={{ color: currentTheme.textPrimary }}
+                                style={{ color: effectiveTheme.textPrimary }}
                               >
                                 {currentQuote.quote}
                               </p>
                             </div>
 
                             {/* Author */}
-                            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                            <div
+                              className="pt-3 border-t flex items-center justify-between"
+                              style={{ borderColor: effectiveTheme.cardBorder }}
+                            >
                               <div className="flex items-center gap-2">
-                                <span className="w-4 h-0.5" style={{ backgroundColor: currentTheme.accent }} />
+                                <span className="w-4 h-0.5" style={{ backgroundColor: effectiveTheme.accent }} />
                                 <span
                                   className="text-xs font-semibold italic truncate max-w-[180px]"
-                                  style={{ color: currentTheme.textSecondary }}
+                                  style={{ color: effectiveTheme.textSecondary }}
                                 >
                                   {currentQuote.author}
                                 </span>
                               </div>
-                              <span className="text-[10px] font-mono text-slate-400">
+                              <span className="text-[10px] font-mono opacity-50" style={{ color: effectiveTheme.textSecondary }}>
                                 {currentQuote.language.toUpperCase()}
                               </span>
                             </div>
@@ -1002,8 +1128,8 @@ export default function App() {
                         <div
                           className="rounded-2xl p-2 border shadow-md flex items-center justify-between transition-colors duration-300"
                           style={{
-                            backgroundColor: currentTheme.cardBackground,
-                            borderColor: currentTheme.cardBorder,
+                            backgroundColor: effectiveTheme.cardBackground,
+                            borderColor: effectiveTheme.cardBorder,
                           }}
                         >
                           {/* 👍 Like */}
@@ -1012,8 +1138,9 @@ export default function App() {
                             className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${
                               reactions[currentQuote.id] === 'like'
                                 ? 'bg-emerald-100 text-emerald-800 font-bold scale-105'
-                                : 'text-slate-600 hover:bg-slate-100'
+                                : 'hover:bg-slate-500/10'
                             }`}
+                            style={{ color: reactions[currentQuote.id] === 'like' ? '#065f46' : effectiveTheme.textSecondary }}
                           >
                             <span className="text-base">👍</span>
                             <span className="text-[10px] font-semibold">Like</span>
@@ -1025,8 +1152,9 @@ export default function App() {
                             className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${
                               reactions[currentQuote.id] === 'dislike'
                                 ? 'bg-red-100 text-red-800 font-bold scale-105'
-                                : 'text-slate-600 hover:bg-slate-100'
+                                : 'hover:bg-slate-500/10'
                             }`}
+                            style={{ color: reactions[currentQuote.id] === 'dislike' ? '#991b1b' : effectiveTheme.textSecondary }}
                           >
                             <span className="text-base">👎</span>
                             <span className="text-[10px] font-semibold">Dislike</span>
@@ -1038,8 +1166,9 @@ export default function App() {
                             className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${
                               isPlayingAudio
                                 ? 'bg-amber-100 text-amber-800 font-bold scale-105'
-                                : 'text-slate-600 hover:bg-slate-100'
+                                : 'hover:bg-slate-500/10'
                             }`}
+                            style={{ color: isPlayingAudio ? '#92400e' : effectiveTheme.textSecondary }}
                           >
                             <span className="text-base">{isPlayingAudio ? '⏹️' : '🔊'}</span>
                             <span className="text-[10px] font-semibold">
@@ -1050,7 +1179,8 @@ export default function App() {
                           {/* 📤 Share (9:16 Story) */}
                           <button
                             onClick={() => setIsShareModalOpen(true)}
-                            className="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-slate-600 hover:bg-slate-100 transition"
+                            className="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl hover:bg-slate-500/10 transition"
+                            style={{ color: effectiveTheme.textSecondary }}
                           >
                             <span className="text-base">📤</span>
                             <span className="text-[10px] font-semibold">Share</span>
@@ -1060,7 +1190,7 @@ export default function App() {
                           <button
                             onClick={handleAdvanceCard}
                             className="flex items-center gap-1.5 py-2.5 px-3.5 rounded-xl text-white font-extrabold text-xs shadow-md transition active:scale-95"
-                            style={{ backgroundColor: currentTheme.accent }}
+                            style={{ backgroundColor: effectiveTheme.accent }}
                           >
                             <span>✨</span>
                             <span>More</span>
@@ -1070,13 +1200,27 @@ export default function App() {
 
                       {/* 6. BOTTOM AD BANNER CONTAINER */}
                       <div className="w-full px-4 pt-1 pb-2">
-                        <div className="w-full h-11 rounded-lg border border-dashed border-slate-300 bg-white/60 flex items-center justify-between px-3 text-[10px] text-slate-500 font-semibold shadow-2xs">
-                          <span className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Google AdMob (Bottom Banner)
+                        <div
+                          className="w-full h-11 rounded-xl border border-dashed flex items-center justify-between px-3 text-[10px] shadow-2xs relative transition-colors"
+                          style={{
+                            backgroundColor: effectiveTheme.cardBackground,
+                            borderColor: effectiveTheme.cardBorder,
+                          }}
+                        >
+                          <span className="text-[9px] font-bold uppercase tracking-wider opacity-60" style={{ color: effectiveTheme.textSecondary }}>
+                            Sponsored
                           </span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-mono">
-                            AD
+                          <span className="text-[10px] font-medium opacity-75" style={{ color: effectiveTheme.textSecondary }}>
+                            Ad space available
+                          </span>
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold"
+                            style={{
+                              backgroundColor: effectiveTheme.accentSoft,
+                              color: effectiveTheme.accent,
+                            }}
+                          >
+                            Bottom Slot
                           </span>
                         </div>
                       </div>
@@ -1276,7 +1420,7 @@ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         quote={currentQuote}
-        theme={currentTheme}
+        theme={effectiveTheme as any}
       />
 
       {/* Preferences & Delete Account Modal */}
@@ -1294,6 +1438,46 @@ EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
             </div>
 
             <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
+              {/* Appearance / Theme Mode */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Appearance / Theme</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => {
+                      setThemeMode('auto');
+                      setUserPrefs((p) => ({ ...p, themeMode: 'auto' }));
+                    }}
+                    className={`p-2.5 rounded-xl border text-center font-semibold transition ${
+                      themeMode === 'auto' ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    🌓 Auto
+                  </button>
+                  <button
+                    onClick={() => {
+                      setThemeMode('light');
+                      setUserPrefs((p) => ({ ...p, themeMode: 'light' }));
+                    }}
+                    className={`p-2.5 rounded-xl border text-center font-semibold transition ${
+                      themeMode === 'light' ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    ☀️ Light
+                  </button>
+                  <button
+                    onClick={() => {
+                      setThemeMode('dark');
+                      setUserPrefs((p) => ({ ...p, themeMode: 'dark' }));
+                    }}
+                    className={`p-2.5 rounded-xl border text-center font-semibold transition ${
+                      themeMode === 'dark' ? 'border-emerald-600 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    🌙 Dark
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Language</label>
                 <div className="grid grid-cols-2 gap-2">

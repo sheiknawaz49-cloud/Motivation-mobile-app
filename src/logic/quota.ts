@@ -1,6 +1,9 @@
 /**
  * Pure logic for daily themes, quota tracking, and streaks in Motiveate AI.
+ * Aligned with https://github.com/sheiknawaz49-cloud/gcp_motivation_app
  */
+
+export type ThemeMode = 'auto' | 'light' | 'dark';
 
 export interface DailyTheme {
   id: string;
@@ -12,88 +15,116 @@ export interface DailyTheme {
   textSecondary: string;
   accent: string;
   accentSoft: string;
+  badgeBg: string;
+  badgeText: string;
   tagBg: string;
   description: string;
+  darkAccent: string;
+  darkAccentSoft: string;
 }
 
 export const PASTEL_THEMES: DailyTheme[] = [
   {
     id: 'warm-sage',
     name: 'Warm Sage',
-    background: '#eef5f0',
+    background: '#f1f7f4',
     cardBackground: '#ffffff',
-    cardBorder: '#d9e8dc',
+    cardBorder: 'rgba(0, 0, 0, 0.08)',
     textPrimary: '#1e293b',
     textSecondary: '#64748b',
-    accent: '#437356',
-    accentSoft: '#e1ede4',
+    accent: '#3b7a57',
+    accentSoft: 'rgba(59, 122, 87, 0.12)',
+    badgeBg: 'rgba(59, 122, 87, 0.14)',
+    badgeText: '#234931',
     tagBg: '#dff1e5',
     description: 'Calming botanical green to center the mind.',
+    darkAccent: '#34d399',
+    darkAccentSoft: 'rgba(52, 211, 153, 0.18)',
   },
   {
-    id: 'morning-oat',
-    name: 'Morning Oat',
-    background: '#f9f5eb',
+    id: 'morning-sand',
+    name: 'Morning Sand',
+    background: '#faf6f0',
     cardBackground: '#ffffff',
-    cardBorder: '#eee3cd',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0, 0, 0, 0.08)',
+    textPrimary: '#292524',
     textSecondary: '#78716c',
-    accent: '#8c6d3b',
-    accentSoft: '#f2e8d3',
-    tagBg: '#f5edd9',
+    accent: '#d97706',
+    accentSoft: 'rgba(217, 119, 6, 0.12)',
+    badgeBg: 'rgba(217, 119, 6, 0.14)',
+    badgeText: '#78350f',
+    tagBg: '#fef3c7',
     description: 'Gentle warmth inspired by fresh sunrise grain.',
+    darkAccent: '#fbbf24',
+    darkAccentSoft: 'rgba(251, 191, 36, 0.18)',
   },
   {
-    id: 'sky-breeze',
-    name: 'Sky Breeze',
-    background: '#edf5fc',
+    id: 'sky-mist',
+    name: 'Sky Mist',
+    background: '#f0f7ff',
     cardBackground: '#ffffff',
-    cardBorder: '#d3e5f6',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0, 0, 0, 0.08)',
+    textPrimary: '#0f172a',
     textSecondary: '#64748b',
-    accent: '#2b6cb0',
-    accentSoft: '#deecfa',
-    tagBg: '#d8ebfc',
+    accent: '#2563eb',
+    accentSoft: 'rgba(37, 99, 235, 0.12)',
+    badgeBg: 'rgba(37, 99, 235, 0.14)',
+    badgeText: '#1e40af',
+    tagBg: '#dbeafe',
     description: 'Soft open sky tone for mental clarity and focus.',
+    darkAccent: '#60a5fa',
+    darkAccentSoft: 'rgba(96, 165, 250, 0.18)',
   },
   {
-    id: 'lavender-mist',
-    name: 'Lavender Mist',
-    background: '#f4f1f8',
+    id: 'lavender-calm',
+    name: 'Lavender Calm',
+    background: '#f6f4f9',
     cardBackground: '#ffffff',
-    cardBorder: '#e3dcf0',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0, 0, 0, 0.08)',
+    textPrimary: '#1e1b4b',
     textSecondary: '#6b7280',
-    accent: '#6b46c1',
-    accentSoft: '#ece4f7',
-    tagBg: '#e9e1f5',
+    accent: '#6366f1',
+    accentSoft: 'rgba(99, 102, 241, 0.12)',
+    badgeBg: 'rgba(99, 102, 241, 0.14)',
+    badgeText: '#3730a3',
+    tagBg: '#e0e7ff',
     description: 'Restorative floral hue for peace and mindfulness.',
+    darkAccent: '#818cf8',
+    darkAccentSoft: 'rgba(129, 140, 248, 0.18)',
   },
   {
-    id: 'rose-alabaster',
-    name: 'Rose Alabaster',
-    background: '#fdf2f0',
+    id: 'peach-clay',
+    name: 'Peach Clay',
+    background: '#fff5f2',
     cardBackground: '#ffffff',
-    cardBorder: '#f9ddd8',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0, 0, 0, 0.08)',
+    textPrimary: '#27272a',
     textSecondary: '#71717a',
-    accent: '#be185d',
-    accentSoft: '#fce4e0',
-    tagBg: '#fae1dc',
+    accent: '#e11d48',
+    accentSoft: 'rgba(225, 29, 72, 0.12)',
+    badgeBg: 'rgba(225, 29, 72, 0.14)',
+    badgeText: '#9f1239',
+    tagBg: '#ffe4e6',
     description: 'Subtle blush for compassion and self-encouragement.',
+    darkAccent: '#fb7185',
+    darkAccentSoft: 'rgba(251, 113, 133, 0.18)',
   },
   {
-    id: 'mint-cream',
-    name: 'Mint Cream',
-    background: '#effaf7',
+    id: 'mint-alabaster',
+    name: 'Mint Alabaster',
+    background: '#f2fbf9',
     cardBackground: '#ffffff',
-    cardBorder: '#d2f0e7',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0, 0, 0, 0.08)',
+    textPrimary: '#134e4a',
     textSecondary: '#64748b',
-    accent: '#0f766e',
-    accentSoft: '#daf2eb',
-    tagBg: '#dcf5ee',
+    accent: '#0d9488',
+    accentSoft: 'rgba(13, 148, 136, 0.12)',
+    badgeBg: 'rgba(13, 148, 136, 0.14)',
+    badgeText: '#115e59',
+    tagBg: '#ccfbf1',
     description: 'Crisp invigorating mint to refresh your perspective.',
+    darkAccent: '#2dd4bf',
+    darkAccentSoft: 'rgba(45, 212, 191, 0.18)',
   },
 ];
 
@@ -120,6 +151,12 @@ export function getCalendarDateKey(date: Date = new Date()): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+export function getYesterdayDateKey(date: Date = new Date()): string {
+  const yesterday = new Date(date);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return getCalendarDateKey(yesterday);
 }
 
 export interface DailyQuotaState {
@@ -165,30 +202,74 @@ export function incrementDailyCardView(current: DailyQuotaState): DailyQuotaStat
 }
 
 /**
- * Calculate user streak based on previous active date and current date.
+ * Date-based streak and max streak calculation matching UserService in Cloud Run.
+ */
+export function calculateStreakWithMax(
+  lastStreakDate: string | null,
+  currentStreak: number,
+  currentMaxStreak: number,
+  todayStr: string = getCalendarDateKey(),
+  yesterdayStr: string = getYesterdayDateKey()
+): { streak: number; maxStreak: number; todayStr: string } {
+  let streak = 1;
+  const safeCurrent = Math.max(1, currentStreak || 1);
+
+  if (lastStreakDate === todayStr) {
+    streak = safeCurrent;
+  } else if (lastStreakDate === yesterdayStr) {
+    streak = safeCurrent + 1;
+  } else {
+    streak = 1;
+  }
+
+  const maxStreak = Math.max(streak, currentMaxStreak || streak);
+  return { streak, maxStreak, todayStr };
+}
+
+/**
+ * Legacy compatibility wrapper.
  */
 export function calculateStreak(
   lastActiveDateKey: string | null,
   currentStreak: number,
   todayKey: string = getCalendarDateKey()
 ): number {
-  if (!lastActiveDateKey) {
-    return 1;
-  }
-  if (lastActiveDateKey === todayKey) {
-    return Math.max(1, currentStreak);
+  const yesterday = getYesterdayDateKey(new Date(todayKey));
+  const res = calculateStreakWithMax(lastActiveDateKey, currentStreak, currentStreak, todayKey, yesterday);
+  return res.streak;
+}
+
+/**
+ * Resolve effective color values based on daily theme and theme mode (auto | light | dark).
+ */
+export function resolveThemeStyle(theme: DailyTheme, mode: ThemeMode, systemIsDark: boolean = false) {
+  const isDark = mode === 'dark' || (mode === 'auto' && systemIsDark);
+
+  if (!isDark) {
+    return {
+      isDark: false,
+      background: theme.background,
+      cardBackground: theme.cardBackground,
+      cardBorder: theme.cardBorder,
+      textPrimary: theme.textPrimary,
+      textSecondary: theme.textSecondary,
+      accent: theme.accent,
+      accentSoft: theme.accentSoft,
+      badgeBg: theme.badgeBg,
+      badgeText: theme.badgeText,
+    };
   }
 
-  const prev = new Date(lastActiveDateKey);
-  const today = new Date(todayKey);
-  const diffTime = today.getTime() - prev.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
-
-  if (diffDays === 1) {
-    return currentStreak + 1;
-  } else if (diffDays > 1) {
-    // Streak reset if skipped a day
-    return 1;
-  }
-  return currentStreak;
+  return {
+    isDark: true,
+    background: '#090d16',
+    cardBackground: '#111827',
+    cardBorder: 'rgba(255, 255, 255, 0.08)',
+    textPrimary: '#f8fafc',
+    textSecondary: '#94a3b8',
+    accent: theme.darkAccent || '#38bdf8',
+    accentSoft: theme.darkAccentSoft || 'rgba(56, 189, 248, 0.15)',
+    badgeBg: 'rgba(255, 255, 255, 0.1)',
+    badgeText: '#f8fafc',
+  };
 }

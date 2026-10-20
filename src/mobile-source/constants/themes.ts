@@ -1,7 +1,10 @@
 /**
  * Daily Soothing Eye-Friendly Pastel Themes for Motiveate AI.
- * Automatically rotates through 6 low-eye-strain palettes based on calendar day.
+ * Aligned with https://github.com/sheiknawaz49-cloud/gcp_motivation_app
+ * Rotates through 6 low-eye-strain palettes based on calendar day.
  */
+
+export type ThemeMode = 'auto' | 'light' | 'dark';
 
 export interface ThemeColors {
   id: string;
@@ -18,113 +21,130 @@ export interface ThemeColors {
   buttonGhostBg: string;
   buttonGhostText: string;
   divider: string;
+  darkAccent: string;
+  darkAccentSoft: string;
 }
 
 export const PASTEL_PALETTES: ThemeColors[] = [
   {
     id: 'warm-sage',
     name: 'Warm Sage',
-    background: '#eef5f0',
+    background: '#f1f7f4',
     cardBackground: '#ffffff',
-    cardBorder: '#dbe7dd',
+    cardBorder: 'rgba(0,0,0,0.07)',
     textPrimary: '#1e293b',
     textSecondary: '#64748b',
-    accent: '#3e6b4e',
-    accentSoft: '#e0ede3',
-    badgeBg: '#d7e8db',
+    accent: '#3b7a57',
+    accentSoft: 'rgba(59, 122, 87, 0.12)',
+    badgeBg: 'rgba(59, 122, 87, 0.14)',
     badgeText: '#234931',
     buttonGhostBg: '#e6f0e9',
     buttonGhostText: '#2e533d',
-    divider: '#e2ece4',
+    divider: 'rgba(0,0,0,0.07)',
+    darkAccent: '#34d399',
+    darkAccentSoft: 'rgba(52, 211, 153, 0.18)',
   },
   {
-    id: 'morning-oat',
-    name: 'Morning Oat',
-    background: '#f9f5eb',
+    id: 'morning-sand',
+    name: 'Morning Sand',
+    background: '#faf6f0',
     cardBackground: '#ffffff',
-    cardBorder: '#ede2ce',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0,0,0,0.07)',
+    textPrimary: '#292524',
     textSecondary: '#78716c',
-    accent: '#856434',
-    accentSoft: '#f3e8d3',
-    badgeBg: '#f2e5cb',
-    badgeText: '#59411f',
+    accent: '#d97706',
+    accentSoft: 'rgba(217, 119, 6, 0.12)',
+    badgeBg: 'rgba(217, 119, 6, 0.14)',
+    badgeText: '#78350f',
     buttonGhostBg: '#f2ebd9',
     buttonGhostText: '#684d26',
-    divider: '#ece1cb',
+    divider: 'rgba(0,0,0,0.07)',
+    darkAccent: '#fbbf24',
+    darkAccentSoft: 'rgba(251, 191, 36, 0.18)',
   },
   {
-    id: 'sky-breeze',
-    name: 'Sky Breeze',
-    background: '#edf5fc',
+    id: 'sky-mist',
+    name: 'Sky Mist',
+    background: '#f0f7ff',
     cardBackground: '#ffffff',
-    cardBorder: '#d6e6f7',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0,0,0,0.07)',
+    textPrimary: '#0f172a',
     textSecondary: '#64748b',
     accent: '#2563eb',
-    accentSoft: '#dbeafe',
-    badgeBg: '#d8e8fa',
+    accentSoft: 'rgba(37, 99, 235, 0.12)',
+    badgeBg: 'rgba(37, 99, 235, 0.14)',
     badgeText: '#1e40af',
     buttonGhostBg: '#e0effd',
     buttonGhostText: '#1d4ed8',
-    divider: '#dbe8f6',
+    divider: 'rgba(0,0,0,0.07)',
+    darkAccent: '#60a5fa',
+    darkAccentSoft: 'rgba(96, 165, 250, 0.18)',
   },
   {
-    id: 'lavender-mist',
-    name: 'Lavender Mist',
-    background: '#f4f1f8',
+    id: 'lavender-calm',
+    name: 'Lavender Calm',
+    background: '#f6f4f9',
     cardBackground: '#ffffff',
-    cardBorder: '#e4dcf1',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0,0,0,0.07)',
+    textPrimary: '#1e1b4b',
     textSecondary: '#6b7280',
-    accent: '#6d28d9',
-    accentSoft: '#ede9fe',
-    badgeBg: '#ebdff7',
-    badgeText: '#4c1d95',
+    accent: '#6366f1',
+    accentSoft: 'rgba(99, 102, 241, 0.12)',
+    badgeBg: 'rgba(99, 102, 241, 0.14)',
+    badgeText: '#3730a3',
     buttonGhostBg: '#ede6f5',
     buttonGhostText: '#5b21b6',
-    divider: '#e7dff2',
+    divider: 'rgba(0,0,0,0.07)',
+    darkAccent: '#818cf8',
+    darkAccentSoft: 'rgba(129, 140, 248, 0.18)',
   },
   {
-    id: 'rose-alabaster',
-    name: 'Rose Alabaster',
-    background: '#fdf2f0',
+    id: 'peach-clay',
+    name: 'Peach Clay',
+    background: '#fff5f2',
     cardBackground: '#ffffff',
-    cardBorder: '#f8dcd7',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0,0,0,0.07)',
+    textPrimary: '#27272a',
     textSecondary: '#71717a',
-    accent: '#be123c',
-    accentSoft: '#ffe4e6',
-    badgeBg: '#fcdcd7',
-    badgeText: '#881337',
+    accent: '#e11d48',
+    accentSoft: 'rgba(225, 29, 72, 0.12)',
+    badgeBg: 'rgba(225, 29, 72, 0.14)',
+    badgeText: '#9f1239',
     buttonGhostBg: '#fae4e1',
     buttonGhostText: '#9f1239',
-    divider: '#f6d9d4',
+    divider: 'rgba(0,0,0,0.07)',
+    darkAccent: '#fb7185',
+    darkAccentSoft: 'rgba(251, 113, 133, 0.18)',
   },
   {
-    id: 'mint-cream',
-    name: 'Mint Cream',
-    background: '#effaf7',
+    id: 'mint-alabaster',
+    name: 'Mint Alabaster',
+    background: '#f2fbf9',
     cardBackground: '#ffffff',
-    cardBorder: '#d3f1e7',
-    textPrimary: '#1e293b',
+    cardBorder: 'rgba(0,0,0,0.07)',
+    textPrimary: '#134e4a',
     textSecondary: '#64748b',
-    accent: '#0f766e',
-    accentSoft: '#ccfbf1',
-    badgeBg: '#d1f4ea',
+    accent: '#0d9488',
+    accentSoft: 'rgba(13, 148, 136, 0.12)',
+    badgeBg: 'rgba(13, 148, 136, 0.14)',
     badgeText: '#115e59',
-    buttonGhostBg: '#def5ee',
+    buttonGhostBg: '#daf0eb',
     buttonGhostText: '#0f766e',
-    divider: '#d8f1e8',
+    divider: 'rgba(0,0,0,0.07)',
+    darkAccent: '#2dd4bf',
+    darkAccentSoft: 'rgba(45, 212, 191, 0.18)',
   },
 ];
 
-/**
- * Returns today's active theme based on day of the year.
- */
 export function getActiveDailyTheme(date: Date = new Date()): ThemeColors {
-  const startOfYear = new Date(date.getFullYear(), 0, 1);
-  const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
-  const index = Math.abs(dayOfYear) % PASTEL_PALETTES.length;
-  return PASTEL_PALETTES[index];
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = (date.getTime() - start.getTime()) + ((start.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000);
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const themeIndex = Math.abs(dayOfYear) % PASTEL_PALETTES.length;
+  return PASTEL_PALETTES[themeIndex];
+}
+
+export function getPaletteByIndex(index: number): ThemeColors {
+  const safeIndex = ((index % PASTEL_PALETTES.length) + PASTEL_PALETTES.length) % PASTEL_PALETTES.length;
+  return PASTEL_PALETTES[safeIndex];
 }

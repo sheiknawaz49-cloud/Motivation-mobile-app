@@ -76,6 +76,7 @@ export default function MainDeckScreen() {
   const [cardsViewedToday, setCardsViewedToday] = useState(1); // 1, 2, or 3
   const [streakCount, setStreakCount] = useState(5);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Bottom action states
   const [reactions, setReactions] = useState<Record<string, 'like' | 'dislike'>>({});
@@ -96,7 +97,7 @@ export default function MainDeckScreen() {
   const translateX = useSharedValue(0);
   const cardOpacity = useSharedValue(1);
 
-  // Fetch today's batch from Cloud Run backend
+  // Fetch today's batch from Cloud Run backend (or expo-sqlite offline cache)
   useEffect(() => {
     let isMounted = true;
     async function loadBatch() {
@@ -104,6 +105,7 @@ export default function MainDeckScreen() {
         const batch = await api.getDailyBatch();
         if (isMounted && batch?.quotes?.length > 0) {
           setDeck(batch.quotes);
+          setIsOffline(Boolean(batch.isOfflineCache));
           if (typeof batch.streakCount === 'number') {
             setStreakCount(batch.streakCount);
           }
@@ -113,6 +115,7 @@ export default function MainDeckScreen() {
         }
       } catch (err) {
         console.warn('Using offline batch quotes:', err);
+        setIsOffline(true);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -145,8 +148,15 @@ export default function MainDeckScreen() {
   };
 
   const updateCardIndex = () => {
-    setCurrentIndex((prev) => (prev + 1) % deck.length);
-    setCardsViewedToday((prev) => Math.min(prev + 1, 3));
+    const nextIndex = (currentIndex + 1) % deck.length;
+    const nextViewed = Math.min(cardsViewedToday + 1, 3);
+    setCurrentIndex(nextIndex);
+    setCardsViewedToday(nextViewed);
+
+    // Persist reading progress into SQLite offline database
+    const todayKey = new Date().toISOString().split('T')[0];
+    api.saveOfflineQuota(todayKey, nextViewed, nextViewed >= 3, streakCount).catch(() => {});
+
     // Stop any ongoing audio playback
     if (soundObject) {
       soundObject.stopAsync().catch(() => {});
@@ -300,6 +310,15 @@ export default function MainDeckScreen() {
           <Text style={styles.settingsIcon}>✏️</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 2.5 OFFLINE SQLITE CACHE BADGE */}
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            📶 Offline Mode • Daily 3 cards loaded from local SQLite cache
+          </Text>
+        </View>
+      )}
 
       {/* 3. STRICT 3 CARDS / DAY COMPLETION BANNER */}
       {isDailyQuotaReached && (
@@ -483,6 +502,22 @@ const styles = StyleSheet.create({
   },
   settingsIcon: {
     fontSize: 16,
+  },
+  offlineBanner: {
+    marginHorizontal: 20,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
   },
   completionBanner: {
     marginHorizontal: 20,

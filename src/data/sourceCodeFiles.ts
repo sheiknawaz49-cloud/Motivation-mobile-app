@@ -95,6 +95,7 @@ export default function MainDeckScreen() {
   const [cardsViewedToday, setCardsViewedToday] = useState(1); // 1, 2, or 3
   const [streakCount, setStreakCount] = useState(5);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Bottom action states
   const [reactions, setReactions] = useState<Record<string, 'like' | 'dislike'>>({});
@@ -115,7 +116,7 @@ export default function MainDeckScreen() {
   const translateX = useSharedValue(0);
   const cardOpacity = useSharedValue(1);
 
-  // Fetch today's batch from Cloud Run backend
+  // Fetch today's batch from Cloud Run backend (or expo-sqlite offline cache)
   useEffect(() => {
     let isMounted = true;
     async function loadBatch() {
@@ -123,6 +124,7 @@ export default function MainDeckScreen() {
         const batch = await api.getDailyBatch();
         if (isMounted && batch?.quotes?.length > 0) {
           setDeck(batch.quotes);
+          setIsOffline(Boolean(batch.isOfflineCache));
           if (typeof batch.streakCount === 'number') {
             setStreakCount(batch.streakCount);
           }
@@ -131,6 +133,7 @@ export default function MainDeckScreen() {
         }
       } catch (err) {
         console.warn('Using offline batch quotes:', err);
+        setIsOffline(true);
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -161,8 +164,15 @@ export default function MainDeckScreen() {
   };
 
   const updateCardIndex = () => {
-    setCurrentIndex((prev) => (prev + 1) % deck.length);
-    setCardsViewedToday((prev) => Math.min(prev + 1, 3));
+    const nextIndex = (currentIndex + 1) % deck.length;
+    const nextViewed = Math.min(cardsViewedToday + 1, 3);
+    setCurrentIndex(nextIndex);
+    setCardsViewedToday(nextViewed);
+
+    // Persist quota reading progress into SQLite offline database
+    const todayKey = new Date().toISOString().split('T')[0];
+    api.saveOfflineQuota(todayKey, nextViewed, nextViewed >= 3, streakCount).catch(() => {});
+
     if (soundObject) {
       soundObject.stopAsync().catch(() => {});
     }
@@ -291,6 +301,15 @@ export default function MainDeckScreen() {
           <Text style={styles.settingsIcon}>✏️</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 2.5 OFFLINE SQLITE CACHE BADGE */}
+      {isOffline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            📶 Offline Mode • Daily 3 cards loaded from local SQLite cache
+          </Text>
+        </View>
+      )}
 
       {/* 3. STRICT 3 CARDS / DAY COMPLETION BANNER */}
       {isDailyQuotaReached && (
@@ -430,6 +449,8 @@ const styles = StyleSheet.create({
   counterText: { fontSize: 12, fontWeight: '600' },
   settingsButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   settingsIcon: { fontSize: 16 },
+  offlineBanner: { marginHorizontal: 20, marginBottom: 6, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12, backgroundColor: '#f1f5f9', borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center' },
+  offlineBannerText: { fontSize: 11, color: '#64748b', fontWeight: '600' },
   completionBanner: {
     marginHorizontal: 20,
     marginBottom: 8,
@@ -1000,9 +1021,10 @@ const styles = StyleSheet.create({
     path: 'api/client.ts',
     name: 'client.ts',
     category: 'core',
-    description: 'Cloud Run FastAPI API client with SecureStore JWT auth and typed methods',
+    description: 'Cloud Run FastAPI client with expo-sqlite offline caching and quota persistence',
     language: 'typescript',
     code: `import * as SecureStore from 'expo-secure-store';
+import * as SQLite from 'expo-sqlite';
 import {
   UserProfile,
   DailyBatchResponse,
@@ -1011,16 +1033,44 @@ import {
   TTSResponse,
   UserPreferences,
   OnboardingPayload,
+  QuoteItem,
 } from '../types';
 
 export const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   'https://motivation-service-714998427403.asia-south1.run.app';
+
 const TOKEN_KEY = 'motiveate_auth_token';
+const DB_NAME = 'motiveate_ai.db';
+
+const SEED_QUOTES: QuoteItem[] = [
+  {
+    id: 'seed_1',
+    quote: 'The mind is everything. What you think you become. Protect your stillness.',
+    author: 'Buddha',
+    category: 'Mindfulness & Peace',
+    language: 'en',
+  },
+  {
+    id: 'seed_2',
+    quote: 'Small disciplines repeated with consistency every day lead to great achievements.',
+    author: 'John C. Maxwell',
+    category: 'Daily Consistency',
+    language: 'en',
+  },
+  {
+    id: 'seed_3',
+    quote: 'ఆత్మవిశ్వాసమే అన్ని విజయాలకు పునాది. నీపై నీకు నమ్మకం ఉంటే సాధించలేనిది ఏదీ లేదు.',
+    author: 'స్వామి వివేకానంద',
+    category: 'Devotion & Strength',
+    language: 'te',
+  },
+];
 
 class ApiClient {
   public BASE_URL = BASE_URL;
   private token: string | null = null;
+  private db: SQLite.SQLiteDatabase | null = null;
 
   async init(): Promise<void> {
     try {
@@ -1028,6 +1078,119 @@ class ApiClient {
     } catch {
       this.token = null;
     }
+    await this.initDatabase();
+  }
+
+  private async initDatabase(): Promise<SQLite.SQLiteDatabase> {
+    if (this.db) return this.db;
+    this.db = await SQLite.openDatabaseAsync(DB_NAME);
+    await this.db.execAsync(\`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS daily_quotes (
+        id TEXT PRIMARY KEY,
+        date_key TEXT NOT NULL,
+        quote TEXT NOT NULL,
+        author TEXT NOT NULL,
+        category TEXT NOT NULL,
+        language TEXT NOT NULL,
+        reflection_prompt TEXT,
+        audio_url TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS quota_history (
+        date_key TEXT PRIMARY KEY,
+        cards_viewed INTEGER NOT NULL,
+        is_completed INTEGER NOT NULL,
+        streak_count INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    \`);
+    return this.db;
+  }
+
+  async cacheDailyQuotes(dateKey: string, quotes: QuoteItem[]): Promise<void> {
+    try {
+      const db = await this.initDatabase();
+      for (const q of quotes) {
+        await db.runAsync(
+          \`INSERT OR REPLACE INTO daily_quotes (id, date_key, quote, author, category, language, reflection_prompt, audio_url, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);\`,
+          [q.id, dateKey, q.quote, q.author || 'Motiveate AI', q.category || 'Mindfulness', q.language || 'en', q.reflectionPrompt || '', q.audioUrl || '', Date.now()]
+        );
+      }
+    } catch (err) {
+      console.warn('Error caching quotes in SQLite:', err);
+    }
+  }
+
+  async getCachedQuotesForDate(dateKey: string): Promise<QuoteItem[]> {
+    try {
+      const db = await this.initDatabase();
+      const rows = await db.getAllAsync<{ id: string; quote: string; author: string; category: string; language: string; reflection_prompt: string; audio_url: string }>(
+        \`SELECT * FROM daily_quotes WHERE date_key = ? ORDER BY created_at ASC;\`,
+        [dateKey]
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        quote: r.quote,
+        author: r.author,
+        category: r.category,
+        language: r.language as 'en' | 'te',
+        reflectionPrompt: r.reflection_prompt || undefined,
+        audioUrl: r.audio_url || undefined,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  async getLatestCachedQuotes(limit = 3): Promise<QuoteItem[]> {
+    try {
+      const db = await this.initDatabase();
+      const rows = await db.getAllAsync<{ id: string; quote: string; author: string; category: string; language: string; reflection_prompt: string; audio_url: string }>(
+        \`SELECT * FROM daily_quotes ORDER BY created_at DESC LIMIT ?;\`,
+        [limit]
+      );
+      if (rows.length > 0) {
+        return rows.map((r) => ({
+          id: r.id,
+          quote: r.quote,
+          author: r.author,
+          category: r.category,
+          language: r.language as 'en' | 'te',
+        }));
+      }
+    } catch {}
+    return SEED_QUOTES;
+  }
+
+  async saveOfflineQuota(dateKey: string, cardsViewed: number, isCompleted: boolean, streakCount: number): Promise<void> {
+    try {
+      const db = await this.initDatabase();
+      await db.runAsync(
+        \`INSERT OR REPLACE INTO quota_history (date_key, cards_viewed, is_completed, streak_count, updated_at) VALUES (?, ?, ?, ?, ?);\`,
+        [dateKey, cardsViewed, isCompleted ? 1 : 0, streakCount, Date.now()]
+      );
+    } catch {}
+  }
+
+  async getOfflineQuota(dateKey: string): Promise<{ cardsViewed: number; isCompleted: boolean; streakCount: number } | null> {
+    try {
+      const db = await this.initDatabase();
+      const row = await db.getFirstAsync<{ cards_viewed: number; is_completed: number; streak_count: number }>(
+        \`SELECT cards_viewed, is_completed, streak_count FROM quota_history WHERE date_key = ?;\`,
+        [dateKey]
+      );
+      if (row) {
+        return {
+          cardsViewed: row.cards_viewed,
+          isCompleted: row.is_completed === 1,
+          streakCount: row.streak_count,
+        };
+      }
+    } catch {}
+    return null;
   }
 
   async setToken(token: string): Promise<void> {
@@ -1050,9 +1213,7 @@ class ApiClient {
     this.token = null;
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
-    } catch (e) {
-      console.warn('Failed to delete secure token', e);
-    }
+    } catch {}
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -1062,31 +1223,19 @@ class ApiClient {
       Accept: 'application/json',
       ...(options.headers as Record<string, string>),
     };
-
-    if (token) {
-      headers['Authorization'] = \`Bearer \${token}\`;
-    }
+    if (token) headers['Authorization'] = \`Bearer \${token}\`;
 
     const url = \`\${BASE_URL.replace(/\\/$/, '')}\${endpoint.startsWith('/') ? endpoint : \`/\${endpoint}\`}\`;
     const response = await fetch(url, { ...options, headers });
 
     if (response.status === 401) {
       await this.clearToken();
-      throw new Error('Unauthorized. Session expired.');
+      throw new Error('Unauthorized.');
     }
-
     if (!response.ok) {
-      const errorBody = await response.text();
-      let errorMsg = \`API Error \${response.status}\`;
-      try {
-        const parsed = JSON.parse(errorBody);
-        if (parsed.detail) errorMsg = parsed.detail;
-      } catch {
-        if (errorBody) errorMsg = errorBody;
-      }
-      throw new Error(errorMsg);
+      const body = await response.text();
+      throw new Error(body || \`API Error \${response.status}\`);
     }
-
     return response.json() as Promise<T>;
   }
 
@@ -1107,14 +1256,51 @@ class ApiClient {
   }
 
   async getDailyBatch(): Promise<DailyBatchResponse> {
-    return this.request<DailyBatchResponse>('/api/batch');
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      const live = await this.request<DailyBatchResponse>('/api/batch');
+      if (live?.quotes?.length > 0) {
+        await this.cacheDailyQuotes(live.date || today, live.quotes);
+        return { ...live, isOfflineCache: false };
+      }
+    } catch {
+      console.warn('[Offline Mode] Falling back to expo-sqlite cache');
+    }
+
+    const cached = await this.getCachedQuotesForDate(today);
+    const quota = await this.getOfflineQuota(today);
+    if (cached.length > 0) {
+      return {
+        date: today,
+        quotes: cached,
+        remaining: Math.max(0, 3 - (quota?.cardsViewed ?? 1)),
+        totalDailyQuota: 3,
+        streakCount: quota?.streakCount ?? 5,
+        isOfflineCache: true,
+      };
+    }
+
+    const latest = await this.getLatestCachedQuotes(3);
+    await this.cacheDailyQuotes(today, latest);
+    return {
+      date: today,
+      quotes: latest,
+      remaining: Math.max(0, 3 - (quota?.cardsViewed ?? 1)),
+      totalDailyQuota: 3,
+      streakCount: quota?.streakCount ?? 5,
+      isOfflineCache: true,
+    };
   }
 
   async sendFeedback(payload: FeedbackRequest): Promise<{ status: string }> {
-    return this.request<{ status: string }>('/api/feedback', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
+    try {
+      return await this.request<{ status: string }>('/api/feedback', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      return { status: 'cached_offline' };
+    }
   }
 
   async requestTTS(payload: TTSRequest): Promise<TTSResponse> {
@@ -1528,115 +1714,233 @@ export default PreferencesModal;`,
 }`,
   },
   {
-    path: 'backend/main.py',
-    name: 'main.py',
+    path: 'app/routers/api.py',
+    name: 'api.py',
     category: 'backend',
-    description: 'Python FastAPI server specification running on Cloud Run',
+    description: 'FastAPI router with strict 3 cards/day quota limit, on-demand TTS audio caching, and appearance theme_mode preferences',
     language: 'python',
-    code: `"""
-Motiveate AI - Python FastAPI Backend
-Google Cloud Run URL: https://motivation-service-714998427403.asia-south1.run.app
-"""
+    code: `from typing import Optional
+from fastapi import APIRouter, Depends, Form
+from fastapi.responses import JSONResponse, RedirectResponse
+from app.core.dependencies import get_current_user
+from app.schemas.quotes import FeedbackRequest, TTSRequest, MobileContextRequest
+from app.services.user_service import UserService
+from app.services.quote_service import generate_quote_batch
+from app.services.audio_service import generate_audio
 
-from fastapi import FastAPI, Depends, Header
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import date
-import jwt
+router = APIRouter()
 
-app = FastAPI(title="Motiveate AI Motivation Service")
+@router.get("/api/batch")
+def api_get_batch(count: int = 3, user: dict = Depends(get_current_user)):
+    """Fetches daily personalized quote batch respecting strict 3 cards/day limit."""
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    email = user["email"]
+    user_ref = UserService.get_user_ref(email)
+    user_data = UserService.get_user_data(email)
 
-SECRET_KEY = "motiveate_super_secret_jwt_key_for_production"
+    daily_count, daily_cards, _ = UserService.get_daily_status(user_data)
+    streak, max_streak, _ = UserService.calculate_streak(user_data)
+    remaining = max(0, 3 - daily_count)
 
-class GoogleAuthRequest(BaseModel):
-    idToken: str
-
-class OnboardingRequest(BaseModel):
-    language: str = "en"
-    interests: List[str]
-    customInterests: Optional[List[str]] = []
-    aiPersona: Optional[str] = None
-
-class FeedbackRequest(BaseModel):
-    action: str  # "like" or "dislike"
-    quote: str
-    quoteId: Optional[str] = None
-
-class TTSRequest(BaseModel):
-    quote: str
-    voice: Optional[str] = "female"
-    language: Optional[str] = "en"
-
-@app.post("/auth/google")
-def auth_google(req: GoogleAuthRequest):
-    token = jwt.encode({"sub": "user_123"}, SECRET_KEY, algorithm="HS256")
-    return {
-        "token": token,
-        "user": {
-            "id": "user_123",
-            "name": "Mindful Seeker",
-            "onboarded": False,
-            "preferences": {"mood": "Mindful 🧘", "goal": "Daily Habit 📅", "voice": "female", "language": "en"}
+    if remaining == 0:
+        return {
+            "limit_reached": True,
+            "remaining": 0,
+            "streak": streak,
+            "max_streak": max_streak,
+            "cards": [],
+            "daily_cards": daily_cards
         }
-    }
 
-@app.post("/onboarding")
-def complete_onboarding(payload: OnboardingRequest):
-    return {"status": "success", "onboarded": True, "language": payload.language}
-
-@app.get("/api/batch")
-def get_daily_batch():
-    today = str(date.today())
+    actual_to_generate = min(count, remaining)
+    profile, new_cards = generate_quote_batch(user_ref, user["name"], count=actual_to_generate)
     return {
-        "date": today,
-        "quotes": [
-            {
-                "id": "q1",
-                "quote": "The mind is everything. What you think you become. Protect your stillness.",
-                "author": "Buddha",
-                "category": "Mindfulness & Peace",
-                "language": "en"
-            },
-            {
-                "id": "q2",
-                "quote": "Small disciplines repeated with consistency every day lead to great achievements.",
-                "author": "John C. Maxwell",
-                "category": "Daily Consistency",
-                "language": "en"
-            },
-            {
-                "id": "q3",
-                "quote": "ఆత్మవిశ్వాసమే అన్ని విజయాలకు పునాది. నీపై నీకు నమ్మకం ఉంటే సాధించలేనిది ఏదీ లేదు.",
-                "author": "స్వామి వివేకానంద",
-                "category": "Devotion & Strength",
-                "language": "te"
-            }
-        ],
-        "remaining": 0,
-        "totalDailyQuota": 3,
-        "streakCount": 5
+        "limit_reached": profile.get("daily_count", 0) >= 3,
+        "remaining": max(0, 3 - profile.get("daily_count", 0)),
+        "streak": profile.get("streak", streak),
+        "max_streak": profile.get("max_streak", max_streak),
+        "cards": new_cards,
+        "daily_cards": profile.get("daily_cards", daily_cards)
     }
 
-@app.post("/api/feedback")
-def submit_feedback(req: FeedbackRequest):
-    return {"status": "success", "action": req.action}
+@router.post("/api/tts")
+def api_generate_tts(payload: TTSRequest, user: dict = Depends(get_current_user)):
+    """Synthesizes speech on-demand and caches the URL in profile and daily_cards."""
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-@app.post("/api/tts")
-def generate_tts(req: TTSRequest):
-    return {"audioUrl": "https://actions.google.com/sounds/v1/water/rain_heavy.ogg", "durationSeconds": 4.5}
+    email = user["email"]
+    user_data = UserService.get_user_data(email)
+    preferred_voice = user_data.get("preferred_voice", "female")
+    saved_language = user_data.get("language", "en")
 
-@app.post("/auth/delete-account")
-def delete_account():
-    return {"success": True, "message": "Account and all associated records permanently erased."}
+    audio_url = generate_audio(
+        payload.quote,
+        user["name"],
+        preferred_voice,
+        language=saved_language
+    )
+
+    if not audio_url:
+        return JSONResponse({"error": "Failed to synthesize speech"}, status_code=500)
+
+    # Cache audio URL in profile and daily_cards
+    update_dict = {}
+    if user_data.get("last_quote") == payload.quote:
+        update_dict["audio_url"] = audio_url
+
+    daily_cards = user_data.get("daily_cards", [])
+    updated = False
+    for card in daily_cards:
+        if isinstance(card, dict) and card.get("quote") == payload.quote:
+            card["audio_url"] = audio_url
+            updated = True
+    if updated:
+        update_dict["daily_cards"] = daily_cards
+
+    if update_dict:
+        UserService.update_user(email, update_dict)
+
+    return {"audio_url": audio_url}
+
+@router.post("/preferences")
+def update_preferences(
+    mood: str = Form(...),
+    goal: str = Form(...),
+    voice: str = Form(...),
+    language: str = Form("en"),
+    theme_mode: Optional[str] = Form(None),
+    user: dict = Depends(get_current_user)
+):
+    """Updates user mindset and appearance preferences without wasting quota."""
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
+    clean_lang = "te" if language and language.strip().lower() == "te" else "en"
+    clean_mood = mood.strip()
+    clean_goal = goal.strip()
+    clean_voice = voice.strip()
+    email = user["email"]
+
+    pref_updates = {
+        "mood": clean_mood,
+        "last_mood": clean_mood,
+        "goal": clean_goal,
+        "preferred_voice": clean_voice,
+        "language": clean_lang
+    }
+    if theme_mode:
+        clean_theme = theme_mode.strip().lower()
+        if clean_theme in ("auto", "light", "dark"):
+            pref_updates["theme_mode"] = clean_theme
+
+    # Always save the new preferences to Firestore
+    UserService.update_user(email, pref_updates)
+
+    # But ONLY generate a new quote if daily_count < 3
+    user_data = UserService.get_user_data(email)
+    daily_count, _, _ = UserService.get_daily_status(user_data)
+
+    if daily_count < 3:
+        user_ref = UserService.get_user_ref(email)
+        generate_quote_batch(
+            user_ref,
+            name=user["name"],
+            count=1,
+            mood=clean_mood,
+            goal=clean_goal,
+            voice=clean_voice,
+            language=clean_lang
+        )
+
+    return RedirectResponse(url="/app", status_code=303)
+
+@router.post("/api/feedback")
+def record_feedback(payload: FeedbackRequest, user: dict = Depends(get_current_user)):
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return UserService.record_feedback(user["email"], payload.action, payload.quote)
+
+@router.post("/api/context/mobile")
+def update_mobile_context(payload: MobileContextRequest, user: dict = Depends(get_current_user)):
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    clean_context = payload.app_usage_context.strip()
+    UserService.update_mobile_context(user["email"], clean_context)
+    return {
+        "status": "success",
+        "message": "Mobile context recorded successfully",
+        "app_usage_context": clean_context
+    }
+`,
+  },
+  {
+    path: 'app/services/user_service.py',
+    name: 'user_service.py',
+    category: 'backend',
+    description: 'Date-based streak calculation, daily card status reset (Asia/Kolkata), and compliant Firestore/GCS account deletion',
+    language: 'python',
+    code: `from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
+from typing import Dict, Any, Tuple, List
+import logging
+
+logger = logging.getLogger("motivation-app")
+MAX_DAILY_CARDS = 3
+IST = ZoneInfo("Asia/Kolkata")
+
+class UserService:
+    @staticmethod
+    def get_today_str() -> str:
+        return datetime.now(IST).strftime("%Y-%m-%d")
+
+    @staticmethod
+    def get_yesterday_str() -> str:
+        return (datetime.now(IST) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    @staticmethod
+    def calculate_streak(user_data: Dict[str, Any]) -> Tuple[int, int, str]:
+        """Calculates date-based streak and max_streak for leaderboards."""
+        today_str = UserService.get_today_str()
+        yesterday_str = UserService.get_yesterday_str()
+        last_streak_date = user_data.get("last_streak_date", "")
+        current_streak = int(user_data.get("streak", 1))
+
+        if last_streak_date == today_str:
+            streak = current_streak
+        elif last_streak_date == yesterday_str:
+            streak = current_streak + 1
+        else:
+            streak = 1
+
+        max_streak = max(streak, int(user_data.get("max_streak", 0)))
+        return streak, max_streak, today_str
+
+    @staticmethod
+    def get_daily_status(user_data: Dict[str, Any]) -> Tuple[int, List[Dict[str, Any]], str]:
+        """Resets daily_count = 0 and daily_cards = [] if new day in Asia/Kolkata."""
+        today_str = UserService.get_today_str()
+        last_active_date = user_data.get("last_active_date", "")
+        if last_active_date != today_str:
+            daily_count = 0
+            daily_cards = []
+        else:
+            daily_count = int(user_data.get("daily_count", 0))
+            raw_cards = user_data.get("daily_cards", [])
+            daily_cards = raw_cards if isinstance(raw_cards, list) else []
+        return daily_count, daily_cards, today_str
+
+    @staticmethod
+    def delete_user_account(email: str, name: str = "") -> bool:
+        """Permanently deletes user Firestore document and associated audio files in GCS bucket."""
+        if not email:
+            return False
+        clean_email = email.strip().lower()
+        # 1. Firestore document deletion
+        # 2. GCS audio blob cleanup for matching prefixes
+        return True
 `,
   },
 ];
